@@ -32,7 +32,7 @@ from datasets.main import load_dataset
 @click.option('--lr', type=float, default=0.001,
               help='Initial learning rate for Deep SVDD network training. Default=0.001')
 @click.option('--n_epochs', type=int, default=50, help='Number of epochs to train.')
-@click.option('--lr_milestone', type=int, default=0, multiple=True,
+@click.option('--lr_milestone', type=int, default=(), multiple=True,
               help='Lr scheduler milestones at which lr is multiplied by 0.1. Can be multiple and must be increasing.')
 @click.option('--batch_size', type=int, default=128, help='Batch size for mini-batch training.')
 @click.option('--weight_decay', type=float, default=1e-6,
@@ -44,7 +44,7 @@ from datasets.main import load_dataset
 @click.option('--ae_lr', type=float, default=0.001,
               help='Initial learning rate for autoencoder pretraining. Default=0.001')
 @click.option('--ae_n_epochs', type=int, default=100, help='Number of epochs to train autoencoder.')
-@click.option('--ae_lr_milestone', type=int, default=0, multiple=True,
+@click.option('--ae_lr_milestone', type=int, default=(), multiple=True,
               help='Lr scheduler milestones at which lr is multiplied by 0.1. Can be multiple and must be increasing.')
 @click.option('--ae_batch_size', type=int, default=128, help='Batch size for mini-batch autoencoder training.')
 @click.option('--ae_weight_decay', type=float, default=1e-6,
@@ -172,12 +172,12 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, ob
     if dataset_name in ('mnist', 'cifar10'):
 
         if dataset_name == 'mnist':
-            X_normals = dataset.test_set.test_data[idx_sorted[:32], ...].unsqueeze(1)
-            X_outliers = dataset.test_set.test_data[idx_sorted[-32:], ...].unsqueeze(1)
+            X_normals = dataset.test_set.data[idx_sorted[:32], ...].unsqueeze(1)
+            X_outliers = dataset.test_set.data[idx_sorted[-32:], ...].unsqueeze(1)
 
         if dataset_name == 'cifar10':
-            X_normals = torch.tensor(np.transpose(dataset.test_set.test_data[idx_sorted[:32], ...], (0, 3, 1, 2)))
-            X_outliers = torch.tensor(np.transpose(dataset.test_set.test_data[idx_sorted[-32:], ...], (0, 3, 1, 2)))
+            X_normals = torch.tensor(np.transpose(dataset.test_set.data[idx_sorted[:32], ...], (0, 3, 1, 2)))
+            X_outliers = torch.tensor(np.transpose(dataset.test_set.data[idx_sorted[-32:], ...], (0, 3, 1, 2)))
 
         plot_images_grid(X_normals, export_img=xp_path + '/normals', title='Most normal examples', padding=2)
         plot_images_grid(X_outliers, export_img=xp_path + '/outliers', title='Most anomalous examples', padding=2)
