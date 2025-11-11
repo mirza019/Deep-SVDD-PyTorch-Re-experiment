@@ -1,6 +1,6 @@
-from base.base_trainer import BaseTrainer
-from base.base_dataset import BaseADDataset
-from base.base_net import BaseNet
+from src.base.base_trainer import BaseTrainer
+from src.base.base_dataset import BaseADDataset
+from src.base.base_net import BaseNet
 from torch.utils.data.dataloader import DataLoader
 from sklearn.metrics import roc_auc_score
 
@@ -78,14 +78,43 @@ class DeepSVDDTrainer(BaseTrainer):
                 # Zero the network parameter gradients
                 optimizer.zero_grad()
 
-                # Update network parameters via backpropagation: forward + backward + optimize
-                outputs = net(inputs)
-                dist = torch.sum((outputs - self.c) ** 2, dim=1)
-                if self.objective == 'soft-boundary':
-                    scores = dist - self.R ** 2
-                    loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
+                # ------------------------------------------------------------
+                # ORIGINAL Deep SVDD LOSS (commented out for hybrid experiment)
+                # outputs = net(inputs)
+                # dist = torch.sum((outputs - self.c) ** 2, dim=1)
+                # if self.objective == 'soft-boundary':
+                #     scores = dist - self.R ** 2
+                #     loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
+                # else:
+                #     loss = torch.mean(dist)
+                # ------------------------------------------------------------
+
+                # ------------------------- NEW HYBRID LOSS BLOCK -------------------------
+                # If hybrid flag is enabled, combine SVDD + reconstruction losses
+                if getattr(self, "hybrid", False):
+                    # forward pass: network returns latent z and reconstruction x_hat
+                    z, x_hat = net(inputs)
+
+                    # Deep SVDD compactness term
+                    dist = torch.sum((z - self.c) ** 2, dim=1)
+                    loss_svdd = torch.mean(dist)
+
+                    # Reconstruction error term
+                    loss_recon = torch.mean((inputs - x_hat) ** 2)
+
+                    # Weighted hybrid loss
+                    loss = 0.7 * loss_svdd + 0.3 * loss_recon
                 else:
-                    loss = torch.mean(dist)
+                    # Default Deep SVDD (non-hybrid)
+                    outputs = net(inputs)
+                    dist = torch.sum((outputs - self.c) ** 2, dim=1)
+                    if self.objective == 'soft-boundary':
+                        scores = dist - self.R ** 2
+                        loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
+                    else:
+                        loss = torch.mean(dist)
+                # -------------------------------------------------------------------------
+
                 loss.backward()
                 optimizer.step()
 
@@ -133,10 +162,21 @@ class DeepSVDDTrainer(BaseTrainer):
                 else:
                     scores = dist
 
-                # Save triples of (idx, label, score) in a list
+                # ------------------- ADAPTIVE THRESHOLD (optional) -------------------
+                # Use Mahalanobis distance for hybrid variant to compute scores
+                if getattr(self, "hybrid", False):
+                    embeddings = outputs.detach().cpu().numpy()
+                    mu = np.mean(embeddings, axis=0)
+                    cov = np.cov(embeddings, rowvar=False)
+                    inv_cov = np.linalg.inv(cov)
+                    from scipy.spatial.distance import mahalanobis
+                    scores = [mahalanobis(x, mu, inv_cov) for x in embeddings]
+                # ---------------------------------------------------------------------
+
+                # Save triples of (idx, label, score)
                 idx_label_score += list(zip(idx.cpu().data.numpy().tolist(),
                                             labels.cpu().data.numpy().tolist(),
-                                            scores.cpu().data.numpy().tolist()))
+                                            np.array(scores).tolist()))
 
         self.test_time = time.time() - start_time
         logger.info('Testing time: %.3f' % self.test_time)

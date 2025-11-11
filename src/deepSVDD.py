@@ -1,10 +1,14 @@
 import json
 import torch
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from base.base_dataset import BaseADDataset
-from networks.main import build_network, build_autoencoder
-from optim.deepSVDD_trainer import DeepSVDDTrainer
-from optim.ae_trainer import AETrainer
+
+from src.base.base_dataset import BaseADDataset
+from src.networks.main import build_network, build_autoencoder
+from src.optim.deepSVDD_trainer import DeepSVDDTrainer
+from src.optim.ae_trainer import AETrainer
+
 
 
 class DeepSVDD(object):
@@ -25,7 +29,8 @@ class DeepSVDD(object):
         results: A dictionary to save the results.
     """
 
-    def __init__(self, objective: str = 'one-class', nu: float = 0.1):
+    # def __init__(self, objective: str = 'one-class', nu: float = 0.1):
+    def __init__(self, objective: str = 'one-class', nu: float = 0.1, hybrid: bool = False):
         """Inits DeepSVDD with one of the two objectives and hyperparameter nu."""
 
         assert objective in ('one-class', 'soft-boundary'), "Objective must be either 'one-class' or 'soft-boundary'."
@@ -51,6 +56,8 @@ class DeepSVDD(object):
             'test_time': None,
             'test_scores': None,
         }
+        self.hybrid = hybrid
+
 
     def set_network(self, net_name):
         """Builds the neural network \phi."""
@@ -66,6 +73,40 @@ class DeepSVDD(object):
         self.trainer = DeepSVDDTrainer(self.objective, self.R, self.c, self.nu, optimizer_name, lr=lr,
                                        n_epochs=n_epochs, lr_milestones=lr_milestones, batch_size=batch_size,
                                        weight_decay=weight_decay, device=device, n_jobs_dataloader=n_jobs_dataloader)
+        # --- Hybrid Deep SVDD + Autoencoder training ---
+        if self.hybrid:
+            print("[INFO] Running Hybrid Deep SVDD + Autoencoder experiment...")
+
+            from networks.autoencoder import Autoencoder
+            from optim.ae_trainer import AETrainer
+
+            # 1. Build and pretrain AE
+            ae_net = Autoencoder(rep_dim=128).to(device)
+            ae_trainer = AETrainer(optimizer_name, lr=lr, n_epochs=30, lr_milestones=lr_milestones,
+                                batch_size=batch_size, weight_decay=weight_decay,
+                                device=device, n_jobs_dataloader=n_jobs_dataloader)
+            ae_net = ae_trainer.train(dataset, ae_net)
+            ae_trainer.test(dataset, ae_net)
+
+            # 2. Copy encoder weights to Deep SVDD
+            net_dict = self.net.state_dict()
+            ae_dict = ae_net.state_dict()
+            ae_dict = {k: v for k, v in ae_dict.items() if k in net_dict}
+            net_dict.update(ae_dict)
+            self.net.load_state_dict(net_dict)
+
+            # 3. Train with hybrid loss
+            self.trainer = DeepSVDDTrainer(self.objective, self.R, self.c, self.nu, optimizer_name, lr=lr,
+                                        n_epochs=n_epochs, lr_milestones=lr_milestones, batch_size=batch_size,
+                                        weight_decay=weight_decay, device=device, n_jobs_dataloader=n_jobs_dataloader)
+            self.trainer.hybrid = True
+            self.net = self.trainer.train(dataset, self.net)
+            self.R = float(self.trainer.R.cpu().data.numpy())
+            self.c = self.trainer.c.cpu().data.numpy().tolist()
+            self.results['train_time'] = self.trainer.train_time
+            return
+        # --- End hybrid block ---
+
         # Get the model
         self.net = self.trainer.train(dataset, self.net)
         self.R = float(self.trainer.R.cpu().data.numpy())  # get float
@@ -85,7 +126,7 @@ class DeepSVDD(object):
         self.results['test_time'] = self.trainer.test_time
         self.results['test_scores'] = self.trainer.test_scores
 
-    def pretrain(self, dataset: BaseADDataset, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 100,
+    def pretrain(self, dataset: BaseADDataset, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 50,
                  lr_milestones: tuple = (), batch_size: int = 128, weight_decay: float = 1e-6, device: str = 'cuda',
                  n_jobs_dataloader: int = 0):
         """Pretrains the weights for the Deep SVDD network \phi via autoencoder."""
