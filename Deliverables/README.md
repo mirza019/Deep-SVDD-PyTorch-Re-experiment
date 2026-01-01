@@ -2,22 +2,39 @@
 
 This folder contains the deliverables for the "Hybrid Explainable One-Class Framework" project, including generated plots and a summary of experimental results.
 
-## 1. Plots
+## 1. Individual Experiment Plots
 
-The following plots are generated as part of the experiment execution:
+The following plots are generated *per experiment* and are saved in their respective subdirectories within `Deliverables/Plots/`:
 
-*   **ROC Curves:** The AUC-ROC score is calculated during the `test` phase of each experiment. While a direct ROC curve plot might not be explicitly saved as an image, the AUC score is a key metric derived from it. You can generate ROC curves from the `test_scores` saved in `results.json` if needed.
-*   **t-SNE Latent-Space Visualization:** These visualizations are generated and saved as `tsne_latent.png` (or similar, e.g., `tsne_latent_cifar10.png`).
-*   **Grad-CAM Overlays:** If the `--grad_cam` flag is set to `True` during experiment execution, Grad-CAM heatmaps are generated for selected normal and anomalous samples and saved as `normal_grad_cam.png` and `outlier_grad_cam.png`.
+*   **Normal and Outlier Samples:** Images of the most normal and most anomalous samples detected by the model.
+*   **t-SNE Latent-Space Visualization:** Visualizations of the latent space for individual experiments.
+*   **Grad-CAM Overlays:** Grad-CAM heatmaps for selected normal and anomalous samples from individual experiments.
 
 **Note:** All generated `.png` plot files from the experiment log directories have been moved to their respective subdirectories within `Deliverables/Plots/` for organized access.
 
-## 2. Tables
+## 2. Comparative Plots
+
+These plots provide a comparison of the performance and interpretability across different models (baseline, best hybrid, adaptive threshold) for each dataset. They are located in `Deliverables/Plots/Comparative/`.
+
+*   **ROC Curves:**
+    *   `Fashion-MNIST_ROC_Curve.png`
+    *   `MNIST_ROC_Curve.png`
+    *   `CIFAR-10_ROC_Curve.png`
+*   **t-SNE Latent-Space Visualization:**
+    *   `Fashion-MNIST_tSNE_Latent_Space.png`
+    *   `MNIST_tSNE_Latent_Space.png`
+    *   `CIFAR-10_tSNE_Latent_Space.png`
+*   **Grad-CAM Overlays:**
+    *   `Fashion-MNIST_Grad_CAM_Comparative.png`
+    *   `MNIST_Grad_CAM_Comparative.png`
+    *   `CIFAR-10_Grad_CAM_Comparative.png`
+
+## 3. Tables
 
 *   **Comparative AUC and F1 Score Summary:**
     A `summary_table.md` has been generated in this `Deliverables` folder. It provides a comparative overview of AUC and F1 scores for all executed experiments across different datasets and configurations (baseline, hybrid with varying `mu1`/`mu2`, and adaptive thresholding). This table helps in assessing the performance improvements and robustness.
 
-## 3. Datasets
+## 4. Datasets
 
 The project utilizes the following datasets:
 
@@ -27,6 +44,6 @@ The project utilizes the following datasets:
 
 These datasets are automatically downloaded and preprocessed by the `srcv2/datasets` module when you run an experiment, provided they are not already present in your specified `data_path`.
 
-## 4. Execution Environment
+## 5. Execution Environment
 
 All experiments were executed on a **MacBook Air M3 CPU**. The code is designed to be lightweight and efficient for CPU execution. You can specify the device using the `--device cpu` flag when running `srcv2/main.py`.
