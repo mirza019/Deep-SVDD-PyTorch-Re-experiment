@@ -8,13 +8,14 @@ from utils.config import Config
 from utils.visualization.plot_images_grid import plot_images_grid
 from deepSVDD import DeepSVDD
 from datasets.main import load_dataset
+from utils.grad_cam import GradCAM, show_cam_on_image
 
 
 ################################################################################
 # Settings
 ################################################################################
 @click.command()
-@click.argument('dataset_name', type=click.Choice(['mnist', 'cifar10']))
+@click.argument('dataset_name', type=click.Choice(['mnist', 'cifar10', 'fashion_mnist']))
 @click.argument('net_name', type=click.Choice(['mnist_LeNet', 'cifar10_LeNet', 'cifar10_LeNet_ELU']))
 @click.argument('xp_path', type=click.Path(exists=True))
 @click.argument('data_path', type=click.Path(exists=True))
@@ -25,6 +26,11 @@ from datasets.main import load_dataset
 @click.option('--objective', type=click.Choice(['one-class', 'soft-boundary']), default='one-class',
               help='Specify Deep SVDD objective ("one-class" or "soft-boundary").')
 @click.option('--nu', type=float, default=0.1, help='Deep SVDD hyperparameter nu (must be 0 < nu <= 1).')
+@click.option('--hybrid', type=bool, default=False, help='Use hybrid loss.')
+@click.option('--mu1', type=float, default=1.0, help='Weight for SVDD loss in hybrid mode.')
+@click.option('--mu2', type=float, default=1.0, help='Weight for reconstruction loss in hybrid mode.')
+@click.option('--thresholding', type=click.Choice(['fixed', 'adaptive']), default='fixed',
+              help='Specify thresholding method ("fixed" or "adaptive").')
 @click.option('--device', type=str, default='cuda', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
 @click.option('--seed', type=int, default=-1, help='Set seed. If -1, use randomization.')
 @click.option('--optimizer_name', type=click.Choice(['adam', 'amsgrad']), default='adam',
@@ -53,9 +59,13 @@ from datasets.main import load_dataset
               help='Number of workers for data loading. 0 means that the data will be loaded in the main process.')
 @click.option('--normal_class', type=int, default=0,
               help='Specify the normal class of the dataset (all other classes are considered anomalous).')
-def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, objective, nu, device, seed,
+@click.option('--noise_std', type=float, default=0.0,
+              help='Standard deviation of Gaussian noise to add to input images.')
+@click.option('--grad_cam', type=bool, default=False,
+              help='Generate Grad-CAM heatmaps for selected samples.')
+def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, objective, nu, hybrid, mu1, mu2, thresholding, device, seed,
          optimizer_name, lr, n_epochs, lr_milestone, batch_size, weight_decay, pretrain, ae_optimizer_name, ae_lr,
-         ae_n_epochs, ae_lr_milestone, ae_batch_size, ae_weight_decay, n_jobs_dataloader, normal_class):
+         ae_n_epochs, ae_lr_milestone, ae_batch_size, ae_weight_decay, n_jobs_dataloader, normal_class, noise_std, grad_cam):
     """
     Deep SVDD, a fully deep method for anomaly detection.
 
@@ -111,10 +121,11 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, ob
     logger.info('Number of dataloader workers: %d' % n_jobs_dataloader)
 
     # Load data
-    dataset = load_dataset(dataset_name, data_path, normal_class)
+    dataset = load_dataset(dataset_name, data_path, normal_class, noise_std=noise_std)
 
     # Initialize DeepSVDD model and set neural network \phi
-    deep_SVDD = DeepSVDD(cfg.settings['objective'], cfg.settings['nu'])
+    deep_SVDD = DeepSVDD(cfg.settings['objective'], cfg.settings['nu'], hybrid=cfg.settings['hybrid'],
+                         mu1=cfg.settings['mu1'], mu2=cfg.settings['mu2'], thresholding=cfg.settings['thresholding'])
     deep_SVDD.set_network(net_name)
     # If specified, load Deep SVDD model (radius R, center c, network weights, and possibly autoencoder weights)
     if load_model:
@@ -169,11 +180,11 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, ob
     indices, labels, scores = np.array(indices), np.array(labels), np.array(scores)
     idx_sorted = indices[labels == 0][np.argsort(scores[labels == 0])]  # sorted from lowest to highest anomaly score
 
-    if dataset_name in ('mnist', 'cifar10'):
+    if dataset_name in ('mnist', 'fashion_mnist', 'cifar10'):
 
-        if dataset_name == 'mnist':
-            X_normals = dataset.test_set.test_data[idx_sorted[:32], ...].unsqueeze(1)
-            X_outliers = dataset.test_set.test_data[idx_sorted[-32:], ...].unsqueeze(1)
+        if dataset_name == 'mnist' or dataset_name == 'fashion_mnist':
+            X_normals = dataset.test_set.data[idx_sorted[:32], ...].unsqueeze(1)
+            X_outliers = dataset.test_set.data[idx_sorted[-32:], ...].unsqueeze(1)
 
         if dataset_name == 'cifar10':
             X_normals = torch.tensor(np.transpose(dataset.test_set.data[idx_sorted[:32], ...], (0, 3, 1, 2)))
@@ -181,6 +192,62 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, ob
 
         plot_images_grid(X_normals, export_img=xp_path + '/normals', title='Most normal examples', padding=2)
         plot_images_grid(X_outliers, export_img=xp_path + '/outliers', title='Most anomalous examples', padding=2)
+
+    if grad_cam:
+        logger.info('Generating Grad-CAM heatmaps...')
+        # Select a few samples for Grad-CAM
+        # For simplicity, let's take the first normal and first outlier from the sorted lists
+        normal_sample_idx = idx_sorted[0]
+        outlier_sample_idx = idx_sorted[-1]
+
+        # Get the actual images
+        if dataset_name == 'mnist' or dataset_name == 'fashion_mnist':
+            normal_img_tensor = dataset.test_set.data[normal_sample_idx, ...].unsqueeze(0)
+            outlier_img_tensor = dataset.test_set.data[outlier_sample_idx, ...].unsqueeze(0)
+        elif dataset_name == 'cifar10':
+            normal_img_tensor = torch.tensor(np.transpose(dataset.test_set.data[normal_sample_idx, ...], (0, 3, 1, 2))).unsqueeze(0)
+            outlier_img_tensor = torch.tensor(np.transpose(dataset.test_set.data[outlier_sample_idx, ...], (0, 3, 1, 2))).unsqueeze(0)
+        
+        # Determine target layer for Grad-CAM
+        target_layer = None
+        if net_name == 'mnist_LeNet':
+            target_layer = deep_SVDD.net.conv2
+        elif net_name in ['cifar10_LeNet', 'cifar10_LeNet_ELU']:
+            target_layer = deep_SVDD.net.conv3
+        else:
+            logger.warning(f"Grad-CAM not configured for network: {net_name}. Skipping Grad-CAM generation.")
+            grad_cam = False # Disable Grad-CAM if target layer not found
+
+        if grad_cam:
+            cam = GradCAM(deep_SVDD.net, target_layer)
+
+            # Generate heatmap for normal sample
+            normal_heatmap = cam(normal_img_tensor.to(device))
+            
+            # Convert tensor to numpy image for OpenCV
+            normal_img_np = normal_img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            if normal_img_np.shape[2] == 1: # Grayscale image
+                normal_img_np = np.squeeze(normal_img_np, axis=2)
+                normal_img_np = cv2.cvtColor(normal_img_np, cv2.COLOR_GRAY2BGR)
+            normal_img_np = (normal_img_np * 255).astype(np.uint8) # Scale to 0-255
+            
+            normal_cam_img = show_cam_on_image(normal_img_np, normal_heatmap)
+            cv2.imwrite(xp_path + '/normal_grad_cam.png', normal_cam_img)
+            logger.info('Saved normal_grad_cam.png')
+
+            # Generate heatmap for outlier sample
+            outlier_heatmap = cam(outlier_img_tensor.to(device))
+            
+            # Convert tensor to numpy image for OpenCV
+            outlier_img_np = outlier_img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            if outlier_img_np.shape[2] == 1: # Grayscale image
+                outlier_img_np = np.squeeze(outlier_img_np, axis=2)
+                outlier_img_np = cv2.cvtColor(outlier_img_np, cv2.COLOR_GRAY2BGR)
+            outlier_img_np = (outlier_img_np * 255).astype(np.uint8) # Scale to 0-255
+            
+            outlier_cam_img = show_cam_on_image(outlier_img_np, outlier_heatmap)
+            cv2.imwrite(xp_path + '/outlier_grad_cam.png', outlier_cam_img)
+            logger.info('Saved outlier_grad_cam.png')
 
     # Save results, model, and configuration
     deep_SVDD.save_results(export_json=xp_path + '/results.json')

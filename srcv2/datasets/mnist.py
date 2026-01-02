@@ -5,17 +5,20 @@ from base.torchvision_dataset import TorchvisionDataset
 from .preprocessing import get_target_label_idx, global_contrast_normalization
 
 import torchvision.transforms as transforms
+import torch
 
 
 class MNIST_Dataset(TorchvisionDataset):
 
-    def __init__(self, root: str, normal_class=0):
+    def __init__(self, root: str, normal_class=0, noise_std: float = 0.0):
         super().__init__(root)
 
         self.n_classes = 2  # 0: normal, 1: outlier
         self.normal_classes = tuple([normal_class])
         self.outlier_classes = list(range(0, 10))
         self.outlier_classes.remove(normal_class)
+
+        self.noise_std = noise_std
 
         # Pre-computed min and max values (after applying GCN) from train data per class
         min_max = [(-0.8826567065619495, 9.001545489292527),
@@ -38,20 +41,21 @@ class MNIST_Dataset(TorchvisionDataset):
         target_transform = transforms.Lambda(lambda x: int(x in self.outlier_classes))
 
         train_set = MyMNIST(root=self.root, train=True, download=True,
-                            transform=transform, target_transform=target_transform)
+                            transform=transform, target_transform=target_transform, noise_std=self.noise_std)
         # Subset train_set to normal class
         train_idx_normal = get_target_label_idx(train_set.train_labels.clone().data.cpu().numpy(), self.normal_classes)
         self.train_set = Subset(train_set, train_idx_normal)
 
         self.test_set = MyMNIST(root=self.root, train=False, download=True,
-                                transform=transform, target_transform=target_transform)
+                                transform=transform, target_transform=target_transform, noise_std=self.noise_std)
 
 
 class MyMNIST(MNIST):
     """Torchvision MNIST class with patch of __getitem__ method to also return the index of a data sample."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, noise_std: float = 0.0, **kwargs):
         super(MyMNIST, self).__init__(*args, **kwargs)
+        self.noise_std = noise_std
 
     def __getitem__(self, index):
         """Override the original method of the MNIST class.
@@ -71,6 +75,9 @@ class MyMNIST(MNIST):
 
         if self.transform is not None:
             img = self.transform(img)
+        
+        if self.noise_std > 0:
+            img = img + torch.randn(img.size()) * self.noise_std
 
         if self.target_transform is not None:
             target = self.target_transform(target)

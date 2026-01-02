@@ -25,7 +25,8 @@ class DeepSVDD(object):
         results: A dictionary to save the results.
     """
 
-    def __init__(self, objective: str = 'one-class', nu: float = 0.1):
+    def __init__(self, objective: str = 'one-class', nu: float = 0.1, hybrid: bool = False, mu1: float = 1.0, mu2: float = 1.0,
+                 thresholding: str = 'fixed'):
         """Inits DeepSVDD with one of the two objectives and hyperparameter nu."""
 
         assert objective in ('one-class', 'soft-boundary'), "Objective must be either 'one-class' or 'soft-boundary'."
@@ -34,6 +35,15 @@ class DeepSVDD(object):
         self.nu = nu
         self.R = 0.0  # hypersphere radius R
         self.c = None  # hypersphere center c
+
+        self.hybrid = hybrid
+        self.mu1 = mu1
+        self.mu2 = mu2
+
+        self.thresholding = thresholding
+        self.mean = None
+        self.cov = None
+        self.inv_cov = None
 
         self.net_name = None
         self.net = None  # neural network \phi
@@ -48,6 +58,7 @@ class DeepSVDD(object):
         self.results = {
             'train_time': None,
             'test_auc': None,
+            'test_f1': None,
             'test_time': None,
             'test_scores': None,
         }
@@ -65,7 +76,9 @@ class DeepSVDD(object):
         self.optimizer_name = optimizer_name
         self.trainer = DeepSVDDTrainer(self.objective, self.R, self.c, self.nu, optimizer_name, lr=lr,
                                        n_epochs=n_epochs, lr_milestones=lr_milestones, batch_size=batch_size,
-                                       weight_decay=weight_decay, device=device, n_jobs_dataloader=n_jobs_dataloader)
+                                       weight_decay=weight_decay, device=device, n_jobs_dataloader=n_jobs_dataloader,
+                                       hybrid=self.hybrid, mu1=self.mu1, mu2=self.mu2, ae_net=self.ae_net,
+                                       thresholding=self.thresholding)
         # Get the model
         self.net = self.trainer.train(dataset, self.net)
         self.R = float(self.trainer.R.cpu().data.numpy())  # get float
@@ -77,11 +90,13 @@ class DeepSVDD(object):
 
         if self.trainer is None:
             self.trainer = DeepSVDDTrainer(self.objective, self.R, self.c, self.nu,
-                                           device=device, n_jobs_dataloader=n_jobs_dataloader)
+                                           device=device, n_jobs_dataloader=n_jobs_dataloader,
+                                           thresholding=self.thresholding)
 
         self.trainer.test(dataset, self.net)
         # Get results
         self.results['test_auc'] = self.trainer.test_auc
+        self.results['test_f1'] = self.trainer.test_f1
         self.results['test_time'] = self.trainer.test_time
         self.results['test_scores'] = self.trainer.test_scores
 
@@ -121,7 +136,10 @@ class DeepSVDD(object):
         torch.save({'R': self.R,
                     'c': self.c,
                     'net_dict': net_dict,
-                    'ae_net_dict': ae_net_dict}, export_model)
+                    'ae_net_dict': ae_net_dict,
+                    'mean': self.trainer.mean,
+                    'cov': self.trainer.cov,
+                    'inv_cov': self.trainer.inv_cov}, export_model)
 
     def load_model(self, model_path, load_ae=False):
         """Load Deep SVDD model from model_path."""
@@ -135,6 +153,11 @@ class DeepSVDD(object):
             if self.ae_net is None:
                 self.ae_net = build_autoencoder(self.net_name)
             self.ae_net.load_state_dict(model_dict['ae_net_dict'])
+        
+        if self.thresholding == 'adaptive':
+            self.mean = model_dict['mean']
+            self.cov = model_dict['cov']
+            self.inv_cov = model_dict['inv_cov']
 
     def save_results(self, export_json):
         """Save results dict to a JSON-file."""

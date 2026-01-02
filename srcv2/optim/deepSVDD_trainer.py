@@ -2,7 +2,7 @@ from base.base_trainer import BaseTrainer
 from base.base_dataset import BaseADDataset
 from base.base_net import BaseNet
 from torch.utils.data.dataloader import DataLoader
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, precision_recall_curve, f1_score
 
 import logging
 import time
@@ -15,7 +15,8 @@ class DeepSVDDTrainer(BaseTrainer):
 
     def __init__(self, objective, R, c, nu: float, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 150,
                  lr_milestones: tuple = (), batch_size: int = 128, weight_decay: float = 1e-6, device: str = 'cuda',
-                 n_jobs_dataloader: int = 0):
+                 n_jobs_dataloader: int = 0, hybrid=False, mu1: float = 1.0, mu2: float = 1.0, ae_net=None,
+                 thresholding: str = 'fixed'):
         super().__init__(optimizer_name, lr, n_epochs, lr_milestones, batch_size, weight_decay, device,
                          n_jobs_dataloader)
 
@@ -27,12 +28,25 @@ class DeepSVDDTrainer(BaseTrainer):
         self.c = torch.tensor(c, device=self.device) if c is not None else None
         self.nu = nu
 
+        # Hybrid loss parameters
+        self.hybrid = hybrid
+        self.mu1 = mu1
+        self.mu2 = mu2
+        self.ae_net = ae_net
+
+        # Adaptive thresholding parameters
+        self.thresholding = thresholding
+        self.mean = None
+        self.cov = None
+        self.inv_cov = None
+
         # Optimization parameters
         self.warm_up_n_epochs = 10  # number of training epochs for soft-boundary Deep SVDD before radius R gets updated
 
         # Results
         self.train_time = None
         self.test_auc = None
+        self.test_f1 = None
         self.test_time = None
         self.test_scores = None
 
@@ -81,11 +95,21 @@ class DeepSVDDTrainer(BaseTrainer):
                 # Update network parameters via backpropagation: forward + backward + optimize
                 outputs = net(inputs)
                 dist = torch.sum((outputs - self.c) ** 2, dim=1)
-                if self.objective == 'soft-boundary':
-                    scores = dist - self.R ** 2
-                    loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
+
+                if self.hybrid:
+                    if self.ae_net is None:
+                        raise ValueError("ae_net must be set for hybrid loss")
+                    rec_outputs = self.ae_net(inputs)
+                    rec_loss = torch.mean(torch.sum((rec_outputs - inputs) ** 2, dim=tuple(range(1, inputs.dim()))))
+                    svdd_loss = torch.mean(dist)
+                    loss = self.mu1 * svdd_loss + self.mu2 * rec_loss
                 else:
-                    loss = torch.mean(dist)
+                    if self.objective == 'soft-boundary':
+                        scores = dist - self.R ** 2
+                        loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
+                    else:
+                        loss = torch.mean(dist)
+
                 loss.backward()
                 optimizer.step()
 
@@ -103,6 +127,11 @@ class DeepSVDDTrainer(BaseTrainer):
 
         self.train_time = time.time() - start_time
         logger.info('Training time: %.3f' % self.train_time)
+
+        if self.thresholding == 'adaptive':
+            logger.info('Fitting Gaussian to normal training data...')
+            self.fit_gaussian(train_loader, net)
+            logger.info('Gaussian fitted.')
 
         logger.info('Finished training.')
 
@@ -127,16 +156,25 @@ class DeepSVDDTrainer(BaseTrainer):
                 inputs, labels, idx = data
                 inputs = inputs.to(self.device)
                 outputs = net(inputs)
-                dist = torch.sum((outputs - self.c) ** 2, dim=1)
-                if self.objective == 'soft-boundary':
-                    scores = dist - self.R ** 2
+
+                if self.thresholding == 'adaptive':
+                    if self.mean is None or self.inv_cov is None:
+                        raise ValueError("Mean and inverse covariance must be fitted for adaptive thresholding.")
+                    
+                    diff = outputs.cpu().numpy() - self.mean
+                    scores = np.sum(diff @ self.inv_cov * diff, axis=1)
                 else:
-                    scores = dist
+                    dist = torch.sum((outputs - self.c) ** 2, dim=1)
+                    if self.objective == 'soft-boundary':
+                        scores = dist - self.R ** 2
+                    else:
+                        scores = dist
+                    scores = scores.cpu().data.numpy()
 
                 # Save triples of (idx, label, score) in a list
                 idx_label_score += list(zip(idx.cpu().data.numpy().tolist(),
                                             labels.cpu().data.numpy().tolist(),
-                                            scores.cpu().data.numpy().tolist()))
+                                            scores.tolist()))
 
         self.test_time = time.time() - start_time
         logger.info('Testing time: %.3f' % self.test_time)
@@ -151,7 +189,32 @@ class DeepSVDDTrainer(BaseTrainer):
         self.test_auc = roc_auc_score(labels, scores)
         logger.info('Test set AUC: {:.2f}%'.format(100. * self.test_auc))
 
+        # Calculate F1 score
+        precision, recall, thresholds = precision_recall_curve(labels, scores)
+        f1_scores = 2 * recall * precision / (recall + precision + 1e-8)
+        best_f1_score = np.max(f1_scores)
+        best_threshold = thresholds[np.argmax(f1_scores)]
+
+        self.test_f1 = best_f1_score
+        logger.info('Best F1 score: {:.2f}% at threshold {:.4f}'.format(100. * best_f1_score, best_threshold))
+
         logger.info('Finished testing.')
+
+    def fit_gaussian(self, train_loader: DataLoader, net: BaseNet):
+        """Fit a Gaussian to the latent representations of the normal training data."""
+        net.eval()
+        latent_vectors = []
+        with torch.no_grad():
+            for data in train_loader:
+                inputs, _, _ = data
+                inputs = inputs.to(self.device)
+                outputs = net(inputs)
+                latent_vectors.append(outputs.cpu().numpy())
+        
+        latent_vectors = np.concatenate(latent_vectors)
+        self.mean = np.mean(latent_vectors, axis=0)
+        self.cov = np.cov(latent_vectors, rowvar=False)
+        self.inv_cov = np.linalg.inv(self.cov)
 
     def init_center_c(self, train_loader: DataLoader, net: BaseNet, eps=0.1):
         """Initialize hypersphere center c as the mean from an initial forward pass on the data."""
