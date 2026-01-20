@@ -14,7 +14,13 @@ The core idea they propose is a new method called **Deep Support Vector Data Des
 
 Detection happens when you test a new, unseen data point. You feed it to the trained network, and if the output lands inside or very close to that sphere, it's considered normal. If it lands far away, it's flagged as an anomaly. The distance from the center of the sphere is basically the anomaly score.
 
-To test this, they used standard datasets like MNIST and CIFAR-10. Since these datasets don't come with 'normal' and 'anomaly' labels (they have labels like '7' or 'cat'), the authors created their own experimental setup. For each test, they'd pick one class to be 'normal' (e.g., 'cats') and then treat all the other nine classes ('dogs', 'cars', etc.) as the anomalies. The model is then trained only on 'cats' and evaluated on how well it can distinguish them from everything else.
+To evaluate their method, they adapted standard multi-class datasets like MNIST and CIFAR-10 for one-class classification. Here's a clearer breakdown of how they treated the data for each experiment:
+
+*   **Defining 'Normal' vs. 'Anomalous'**: First, they chose one specific class from the dataset to be "normal" (for example, the digit '3'). All other classes (digits '0', '1', '2', '4', etc.) were then considered "anomalous" for that experiment.
+
+*   **Training Phase**: The network was trained **exclusively** on images from the "normal" class (e.g., only images of '3'). It never saw a single image from the other nine "anomalous" classes during this phase.
+
+*   **Testing Phase**: After training, the model was evaluated on a test set that contained a mix of images from **all ten classes**. The goal was to see if the model, having only ever seen the "normal" class, could correctly identify images from that class while rejecting images from the nine "anomalous" classes it had never encountered.
 
 Finally, the paper shows that this Deep SVDD method performs really well, often outperforming both the classic methods and the other deep learning techniques in their experiments. It seems like a more direct and effective way to train a network for one-class classification."
 
