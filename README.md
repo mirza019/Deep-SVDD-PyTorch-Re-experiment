@@ -50,6 +50,8 @@ This code is written in `Python 3.x` and requires the packages listed in `requir
 
 ## Running Experiments with `srcv2` (Recommended)
 
+**A Note on the Experiments:** In our experiments, we evaluate the model's ability to perform one-class classification. For a given dataset like MNIST or CIFAR-10, we designate one class as "normal" (e.g., the digit '3', using the `--normal_class` parameter) and treat all other classes as "anomalous." The model is then trained exclusively on data from the "normal" class. This process is repeated for each class to ensure a comprehensive evaluation.
+
 All experiments are executed using the `srcv2/main.py` script. All experiments are designed to run on a CPU.
 
 ### 1. Running Baseline (Original) Deep SVDD
@@ -128,9 +130,15 @@ python main.py cifar10 cifar10_LeNet ../log/cifar10_test ../data --objective one
 
 ## Deliverables
 
-The `Deliverables/` folder contains:
-*   `Deliverables/summary_table.md`: A Markdown table summarizing the AUC and F1 scores from all experiments.
-*   `Deliverables/Plots/`: Organized subdirectories containing individual and comparative plots (ROC curves, t-SNE, Grad-CAM overlays) generated from the experiments.
+The `Deliverables/` folder contains the final results of the experiments, including plots and a summary table.
+
+*   **`Deliverables/summary_table.md`**: A Markdown table summarizing the AUC and F1 scores from all experiments.
+
+*   **`Deliverables/Plots/`**: This directory contains all the plots generated from the experiments, organized into the following subdirectories:
+    *   **`CIFAR10/`**: Plots from experiments run on the CIFAR-10 dataset.
+    *   **`FashionMNIST/`**: Plots from experiments run on the Fashion-MNIST dataset.
+    *   **`MNIST/`**: Plots from experiments run on the MNIST dataset.
+    *   **`Comparative/`**: Plots that compare the performance of different models (e.g., ROC curves).
 
 ## Original Abstract (Deep One-Class Classification)
 > Despite the great advances made by deep learning in many machine learning problems, there is a relative dearth of deep learning approaches for anomaly detection. Those approaches which do exist involve networks trained to perform a task other than anomaly detection, namely generative models or compression, which are in turn adapted for use in anomaly detection; they are not trained on an anomaly detection based objective. In this paper we introduce a new anomaly detection method—Deep Support Vector Data Description—, which is trained on an anomaly detection based objective. The adaptation to the deep regime necessitates that our neural network and training procedure satisfy certain properties, which we demonstrate theoretically. We show the effectiveness of our method on MNIST and CIFAR-10 image benchmark datasets as well as on the detection of adversarial examples of GTSRB stop signs.
