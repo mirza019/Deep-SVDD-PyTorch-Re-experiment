@@ -105,3 +105,11 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+# Added by Gemini
+data/
+log/
+myenv/
+*.pptx
+~.pptx
+
+imgs/
