@@ -68,84 +68,57 @@ This code is written in `Python 3.x` and requires the packages listed in `requir
     pip install -r requirements.txt
     ```
 
-## Running Experiments with `srcv2` (Recommended)
+## Running Experiments
+
+This project contains two separate implementations:
+*   **`src/`**: The original implementation, ideal for running the baseline model.
+*   **`srcv2/`**: An updated and extended implementation for running hybrid models, adaptive thresholding, and other re-experiments.
 
 **A Note on the Experiments:** In our experiments, we evaluate the model's ability to perform one-class classification. For a given dataset like MNIST or CIFAR-10, we designate one class as "normal" (e.g., the digit '3', using the `--normal_class` parameter) and treat all other classes as "anomalous." The model is then trained exclusively on data from the "normal" class. This process is repeated for each class to ensure a comprehensive evaluation.
 
-All experiments are executed using the `srcv2/main.py` script. All experiments are designed to run on a CPU.
+---
 
-### 1. Running Baseline (Original) Deep SVDD
+## Running Baseline Experiments (Original `src` Implementation)
 
-To run the original Deep SVDD model, set `--hybrid False` and `--thresholding fixed`.
+To run the original Deep SVDD model, use the `main.py` script in the `src` directory.
 
-**Example: Baseline Deep SVDD on Fashion-MNIST**
+### MNIST Example
+```bash
+# Activate virtual environment
+source myenv/bin/activate
+
+# Create folder for experimental output
+mkdir -p log/mnist_test
+
+# Change to the original source directory
+cd src
+
+# Run experiment
+python main.py mnist mnist_LeNet ../log/mnist_test ../data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 150 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3
+```
+
+---
+
+## Running Hybrid & Re-experiments (`srcv2` Implementation)
+
+All new and extended experiments are executed using the `srcv2/main.py` script.
+
+### 1. Re-running Baseline with `srcv2`
 ```bash
 source myenv/bin/activate
 python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_baseline_test data --normal_class 0 --device cpu --hybrid False --thresholding fixed --pretrain True
 ```
 
-### 2. Running New Hybrid Deep SVDD Models
-
-To run the Hybrid Deep SVDD model, set `--hybrid True` and specify `mu1` and `mu2`.
-
-**Example: Hybrid Deep SVDD on Fashion-MNIST (μ1=1.0, μ2=0.5)**
+### 2. Running Hybrid Deep SVDD Models
 ```bash
 source myenv/bin/activate
 python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_hybrid_mu1_1_mu2_0.5_test data --normal_class 0 --device cpu --hybrid True --mu1 1.0 --mu2 0.5 --thresholding fixed --pretrain True
 ```
 
-### 3. Running Adaptive Statistical Threshold Models
-
-To run the Deep SVDD model with adaptive statistical thresholding, set `--hybrid False` and `--thresholding adaptive`.
-
-**Example: Adaptive Threshold on Fashion-MNIST**
-```bash
-source myenv/bin/activate
-python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_adaptive_threshold_test data --normal_class 0 --device cpu --hybrid False --thresholding adaptive --pretrain True
-```
-
-### 4. Generating Grad-CAM Visualizations
-
-To generate Grad-CAM visualizations, add the `--grad_cam True` flag to any command.
-
-**Example: Baseline Deep SVDD on Fashion-MNIST with Grad-CAM**
+### 3. Generating Grad-CAM Visualizations
 ```bash
 source myenv/bin/activate
 python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_baseline_test_grad_cam data --normal_class 0 --device cpu --hybrid False --thresholding fixed --pretrain True --grad_cam True
-```
-
-## Running the Original Baseline (from `src`)
-
-The original baseline implementation can be run from the `src` directory.
-
-### MNIST example
-```bash
-# activate virtual environment
-source myenv/bin/activate
-
-# create folder for experimental output
-mkdir -p log/mnist_test
-
-# change to source directory
-cd src
-
-# run experiment
-python main.py mnist mnist_LeNet ../log/mnist_test ../data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 150 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3
-```
-
-### CIFAR-10 example
-```bash
-# activate virtual environment
-source myenv/bin/activate
-
-# create folder for experimental output
-mkdir -p log/cifar10_test
-
-# change to source directory
-cd src
-
-# run experiment
-python main.py cifar10 cifar10_LeNet ../log/cifar10_test ../data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 350 --ae_lr_milestone 250 --ae_batch_size 200 --ae_weight_decay 0.5e-6 --normal_class 3
 ```
 
 ## Deliverables
