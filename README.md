@@ -71,52 +71,10 @@ This code is written in `Python 3.x` and requires the packages listed in `requir
 ## Running Experiments
 
 This project contains two separate implementations:
-*   **`src/`**: The original implementation, ideal for running the baseline model.
+*   **`src/`**: The original implementation, ideal for running the baseline model as described in the paper.
 *   **`srcv2/`**: An updated and extended implementation for running hybrid models, adaptive thresholding, and other re-experiments.
 
-**A Note on the Experiments:** In our experiments, we evaluate the model's ability to perform one-class classification. For a given dataset like MNIST or CIFAR-10, we designate one class as "normal" (e.g., the digit '3', using the `--normal_class` parameter) and treat all other classes as "anomalous." The model is then trained exclusively on data from the "normal" class. This process is repeated for each class to ensure a comprehensive evaluation.
-
----
-
-## Running Baseline Experiments (Original `src` Implementation)
-
-To run the original Deep SVDD model, use the `main.py` script in the `src` directory. It is recommended to run the commands from the project root directory.
-
-### MNIST Example
-```bash
-# Activate virtual environment
-source myenv/bin/activate
-
-# Create folder for experimental output
-mkdir -p log/mnist_test
-
-# Run experiment from the project root
-python src/main.py mnist mnist_LeNet log/mnist_test data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 150 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3
-```
-
----
-
-## Running Hybrid & Re-experiments (`srcv2` Implementation)
-
-All new and extended experiments are executed using the `srcv2/main.py` script.
-
-### 1. Re-running Baseline with `srcv2`
-```bash
-source myenv/bin/activate
-python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_baseline_test data --normal_class 0 --device cpu --hybrid False --thresholding fixed --pretrain True
-```
-
-### 2. Running Hybrid Deep SVDD Models
-```bash
-source myenv/bin/activate
-python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_hybrid_mu1_1_mu2_0.5_test data --normal_class 0 --device cpu --hybrid True --mu1 1.0 --mu2 0.5 --thresholding fixed --pretrain True
-```
-
-### 3. Generating Grad-CAM Visualizations
-```bash
-source myenv/bin/activate
-python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_baseline_test_grad_cam data --normal_class 0 --device cpu --hybrid False --thresholding fixed --pretrain True --grad_cam True
-```
+For detailed instructions on how to run experiments for both implementations, please refer to the **[RUN_INSTRUCTIONS.md](RUN_INSTRUCTIONS.md)** file. It provides comprehensive commands and examples.
 
 ## Deliverables
 
