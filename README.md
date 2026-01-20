@@ -80,7 +80,7 @@ This project contains two separate implementations:
 
 ## Running Baseline Experiments (Original `src` Implementation)
 
-To run the original Deep SVDD model, use the `main.py` script in the `src` directory.
+To run the original Deep SVDD model, use the `main.py` script in the `src` directory. It is recommended to run the commands from the project root directory.
 
 ### MNIST Example
 ```bash
@@ -90,11 +90,8 @@ source myenv/bin/activate
 # Create folder for experimental output
 mkdir -p log/mnist_test
 
-# Change to the original source directory
-cd src
-
-# Run experiment
-python main.py mnist mnist_LeNet ../log/mnist_test ../data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 150 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3
+# Run experiment from the project root
+python src/main.py mnist mnist_LeNet log/mnist_test data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 150 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3
 ```
 
 ---
