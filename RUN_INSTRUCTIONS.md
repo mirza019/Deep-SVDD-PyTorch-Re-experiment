@@ -20,7 +20,7 @@ Before running any experiments, ensure you have the following:
     ```
     *(Note: The `requirements.txt` file should contain all necessary libraries like `torch`, `numpy`, `scikit-learn`, `matplotlib`, `opencv-python`, etc.)*
 
-## Running Experiments
+## Running Experiments with `srcv2` (Recommended)
 
 All experiments are executed using the `srcv2/main.py` script. This script allows you to configure various aspects of the Deep SVDD model, including the dataset, network architecture, objective, hybrid loss parameters, thresholding method, and whether to generate Grad-CAM visualizations.
 
@@ -120,7 +120,41 @@ source myenv/bin/activate
 python srcv2/main.py fashion_mnist mnist_LeNet log/fashion_mnist_baseline_test_grad_cam data --normal_class 0 --device cpu --hybrid False --thresholding fixed --pretrain True --grad_cam True
 ```
 
-### 5. Analyzing Results and Deliverables
+## Running the Original Baseline (from `src`)
+
+The original baseline implementation can be run from the `src` directory.
+
+### MNIST example
+```bash
+# activate virtual environment
+source myenv/bin/activate
+
+# create folder for experimental output
+mkdir -p log/mnist_test
+
+# change to source directory
+cd src
+
+# run experiment
+python main.py mnist mnist_LeNet ../log/mnist_test ../data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 150 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3
+```
+
+### CIFAR-10 example
+```bash
+# activate virtual environment
+source myenv/bin/activate
+
+# create folder for experimental output
+mkdir -p log/cifar10_test
+
+# change to source directory
+cd src
+
+# run experiment
+python main.py cifar10 cifar10_LeNet ../log/cifar10_test ../data --objective one-class --lr 0.0001 --n_epochs 150 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 350 --ae_lr_milestone 250 --ae_batch_size 200 --ae_weight_decay 0.5e-6 --normal_class 3
+```
+
+## 5. Analyzing Results and Deliverables
 
 After running your experiments, the results (`results.json`, `log.txt`, and generated plots like `normals.png`, `outliers.png`, `normal_grad_cam.png`, `outlier_grad_cam.png`, `tsne_latent.png`) will be saved in the `xp_path` you specified (e.g., `log/my_experiment_name/`).
 
